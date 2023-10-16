@@ -2,7 +2,7 @@ Important Note:
 ===============
 This project is archived, as everything works as indended. If you are interested
 in the decoding optimizes, those where integrated into the Syndrome decoding
-Estimator in the (CryptographicEstimator)[https://github.com/Crypto-TII/CryptographicEstimators].
+Estimator in the [CryptographicEstimator](https://github.com/Crypto-TII/CryptographicEstimators).
 
 This repository stays online for the Subset-Sum estimators.
 
