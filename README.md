@@ -1,3 +1,15 @@
+Important Note:
+===============
+This project is archived, as everything works as indended. If you are interested
+in the decoding optimizes, those where integrated into the Syndrome decoding
+Estimator in the (CryptographicEstimator)[https://github.com/Crypto-TII/CryptographicEstimators].
+
+This repository stays online for the Subset-Sum estimators.
+
+Introduction:
+=============
+
+
 Optimizers for the paper [New Time-Memory Trade-Offs for Subset Sum -- Improving ISD in Theory and Practice](https://eprint.iacr.org/2022/1329)
 
 The idea for using `scipy.optimize` is from Xavier Bonnetain, Rémi Bricout, André Schrottenloher  and Yixin Shen [Paper](https://eprint.iacr.org/2020/168), specially from their [code repository](https://github.com/xbonnetain/optimization-subset-sum)
@@ -49,3 +61,10 @@ To optimize under memory constrains run
 ```bash
 python optimize.py --new_bbss --memlimit
 ```
+
+Note that the python script is intended to be used by the jupyter notebook,
+therefore you will find all the visualisation commands in the notebook, whereas
+the python script is only intended to provide the raw data.
+
+Second Note: The code generating the tables in the paper is at the end of
+the jupyter notebook.

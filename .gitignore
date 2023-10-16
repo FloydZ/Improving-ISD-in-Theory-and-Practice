@@ -1,2 +1,3 @@
 .local-history/
 .ipynb_checkpoints/
+__pycache__/

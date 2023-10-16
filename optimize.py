@@ -29,7 +29,7 @@ levels_qc = {"BIKEmsg": [[], [], []], "BIKEkey": [[], [], []],
              "HQC": [[], [], []]}
 AES_GATE_COUNT_LEVEL = {128: 143, 192: 207, 256: 272}
 
-NOLOG = False
+NOLOG = True
 
 
 def HHH(c):
@@ -104,7 +104,7 @@ def float_range(start, stop, step):
 
 def check_constraints(constraints, solution):
     """
-    checks wether constrains are fullfilled or not
+    checks whether constrains are fulfilled or not
     """
     return [(constraint['type'], constraint['fun'](solution))
             for constraint in constraints]
@@ -112,7 +112,7 @@ def check_constraints(constraints, solution):
 
 def wrap(f, g):
     """
-    helper function injecting variables names into the optimisation process.
+    helper function injecting variables names into the optimization process.
     """
     def inner(x):
         return f(g(*x))
@@ -231,7 +231,7 @@ def H1(value):
 
 def Hi(value):
     """
-    puhhhh
+    helper wrapper
     """
     return H1(value)
 
@@ -346,11 +346,13 @@ def optimize_bcj(new=True, only_diss=False, verb=True, membound=1.,
     :param only_diss: if set to `true` the optimization will take the 7/11
                     dissection into account but not the tree repetitions.
     :param verb: verbose output
-    :param membound: set the maximal memory the optimisation should use
+    :param membound: set the maximal memory the optimization should use,
                     value between [0,1]
     """
     set_bcj = collections.namedtuple('bcj', 'l1 l2 l3 L1 L2 L3 L4 '
                                      'alpha1 alpha2 alpha3 r1 r2 r3')
+    set_org_bcj = collections.namedtuple('org_bcj', 'p0 p1 p2 l1 l2 l3 l4 c1 c2 c3 alpha1 alpha2 alpha3')
+    def org_bcj(f) : return wrap(f, set_org_bcj)
 
     if new and only_diss:
         print("BCJ specify only the new algorithm or only dissection")
@@ -362,22 +364,30 @@ def optimize_bcj(new=True, only_diss=False, verb=True, membound=1.,
     def g(a, b):
         return -xlx(a) - xlx(b) - xlx(1-a-b)
 
+    # SOME NOTE:
+    # L4 = final list, there for L0 = base lists
+
     p3 = lambda x: 1/4 + x.alpha3
-    p2 = lambda x: 1/8 + x.alpha3/2 + x.alpha2
-    p1 = lambda x: 1/16 + x.alpha3/4 + x.alpha2/2+x.alpha1
-    p0 = lambda x: p1(x)/2
+    p2 = lambda x: 1/8 + x.alpha3/2. + x.alpha2
+    p1 = lambda x: 1/16 + x.alpha3/4. + x.alpha2/2. + x.alpha1
+    p0 = lambda x: p1(x)/2.
+
+    pp0 = lambda x: p_good(1/2., 0., 1/4.+x.alpha1, x.alpha1)
+    pp1 = lambda x: p_good(1/4.+x.alpha1, x.alpha1, 1/8.+x.alpha2, x.alpha2)
+    pp2 = lambda x: p_good(1/8.+x.alpha2, x.alpha2, 1/16.+x.alpha3, x.alpha3)
 
     m3 = lambda x: x.alpha3
-    m2 = lambda x: x.alpha3/2 + x.alpha2
-    m1 = lambda x: x.alpha3/4 + x.alpha2/2 + x.alpha1
-    m0 = lambda x: m1(x)/2
+    m2 = lambda x: x.alpha3/2. + x.alpha2
+    m1 = lambda x: x.alpha3/4. + x.alpha2/2. + x.alpha1
+    m0 = lambda x: m1(x)/2.
 
     D1 = lambda x: g(p1(x), m1(x))
     D2 = lambda x: g(p2(x), m2(x))
     D3 = lambda x: g(p3(x), m3(x))
+
     q2 = lambda x: D2(x) + x.r1 - 2*D1(x)
     q3 = lambda x: D3(x) + x.r2 - 2*D2(x)
-    q4 = lambda x: 1 + x.r3 - 2*D3(x)
+    q4 = lambda x: 1. + x.r3 - 2*D3(x)
 
     t1= lambda x: max(7*x.l1 - r(x),0)
     t2= lambda x: max(7*x.l1 + 3*x.l2 - r(x),0) - t1(x)
@@ -391,38 +401,61 @@ def optimize_bcj(new=True, only_diss=False, verb=True, membound=1.,
 
     bjc_constraints = [
         # representations
-        {'type': 'eq', 'fun':
-         bcj(lambda x: x.r1 - bcj_reps(p2(x), m2(x), x.alpha1))},
-        {'type': 'eq', 'fun':
-         bcj(lambda x: x.r2 - bcj_reps(p3(x), m3(x), x.alpha2))},
-        {'type': 'eq', 'fun':
-         bcj(lambda x: x.r3 - bcj_reps(1/2, 0, x.alpha3))},
+        {'type': 'eq', 'fun': bcj(lambda x: x.r1 - bcj_reps(p2(x), m2(x), x.alpha1))},
+        {'type': 'eq', 'fun': bcj(lambda x: x.r2 - bcj_reps(p3(x), m3(x), x.alpha2))},
+        {'type': 'eq', 'fun': bcj(lambda x: x.r3 - bcj_reps(1/2., 0, x.alpha3))},
 
         # list sizes
-        # { 'type' : 'eq'  , 'fun' : bcj(lambda x : x.L4 - (2*x.L3- (1-l(x)) +q4(x)))},
+        {'type': 'eq',   'fun': bcj(lambda x: x.L4 - (2*x.L3 - (1.-l(x)) +q4(x)))},
         {'type': 'ineq', 'fun': bcj(lambda x: x.L3 - (2*x.L2 - x.l3 + q3(x)))},
         {'type': 'ineq', 'fun': bcj(lambda x: x.L2 - (2*x.L1 - x.l2 + q2(x)))},
         {'type': 'ineq', 'fun': bcj(lambda x: x.L1 - (D1(x) - x.l1))},
 
         # correctness constraints
-        {'type': 'ineq', 'fun': bcj(lambda x: 1-l(x))},
-        # { 'type' : 'ineq', 'fun' : bcj(lambda x : x.r3-x.r2)},
-        # { 'type' : 'ineq', 'fun' : bcj(lambda x : x.r2-x.r1)},
+        {'type': 'ineq', 'fun': bcj(lambda x: 1.-l(x))},
+        {'type': 'ineq', 'fun': bcj(lambda x: x.r3-x.r2)},
+        {'type': 'ineq', 'fun': bcj(lambda x: x.r2-x.r1)},
 
         # memory
-        {'type': 'ineq', 'fun':
-         bcj(lambda x: membound - bcj_memory(x))},
+        {'type': 'ineq', 'fun': bcj(lambda x: membound - bcj_memory(x))},
 
         # saturation constraints
         {'type': 'ineq', 'fun': bcj(lambda x: x.l1 - x.r1)},
-        {'type': 'ineq', 'fun':
-         bcj(lambda x: x.l2 - (2*x.r1 + x.r2 - 3*x.l1))},
+        {'type': 'ineq', 'fun': bcj(lambda x: x.l2 - (2*x.r1 + x.r2 - 3*x.l1))},
         {'type': 'ineq', 'fun': bcj(lambda x: x.l3 - (r(x)-7*x.l1-3*x.l2))},
+        
+        # coherence of the -1
+        { 'type' : 'ineq', 'fun' : bcj(lambda x : x.alpha2 - x.alpha1/2)},
+        { 'type' : 'ineq', 'fun' : bcj(lambda x : x.alpha3 - x.alpha2/2)}
+    ]
+
+    org_bcj_constraints = [
+        # filtering terms
+        { 'type' : 'eq', 'fun' : org_bcj(lambda x : p_good(1/2., 0., 1/4.+x.alpha1, x.alpha1) - x.p0 )},
+        { 'type' : 'eq', 'fun' : org_bcj(lambda x : p_good(1/4.+x.alpha1, x.alpha1, 1/8.+x.alpha2, x.alpha2) - x.p1)},
+        { 'type' : 'eq', 'fun' : org_bcj(lambda x : p_good(1/8.+x.alpha2, x.alpha2, 1/16.+x.alpha3, x.alpha3) - x.p2)},
+        
+        # sizes of the lists
+        { 'type' : 'eq', 'fun' : org_bcj(lambda x : 2*x.l1 - (1-x.c1) + x.p0 )},
+        { 'type' : 'eq', 'fun' : org_bcj(lambda x : 2*x.l2 - (x.c1 - x.c2) + x.p1 - x.l1 )},
+        { 'type' : 'eq', 'fun' : org_bcj(lambda x : 2*x.l3 - (x.c2 - x.c3) + x.p2 - x.l2 )},
+        { 'type' : 'eq', 'fun' : org_bcj(lambda x : 2*x.l4 - x.c3 - x.l3 )},
+        { 'type' : 'ineq', 'fun' : org_bcj(lambda x : g(1/4.+x.alpha1, x.alpha1) - x.c1 - x.l1)},
+        { 'type' : 'ineq', 'fun' : org_bcj(lambda x : g(1/8.+x.alpha2, x.alpha2) - x.c2 - x.l2)},
+        { 'type' : 'ineq', 'fun' : org_bcj(lambda x : g(1/16.+x.alpha3, x.alpha3) - x.c3 - x.l3)},
+        { 'type' : 'ineq', 'fun' : org_bcj(lambda x : g(1/16.+x.alpha3, x.alpha3)*0.5 - x.l4)},
+        
+        # coherence of the -1
+        { 'type' : 'ineq', 'fun' : org_bcj(lambda x : x.alpha2 - x.alpha1/2)},
+        { 'type' : 'ineq', 'fun' : org_bcj(lambda x : x.alpha3 - x.alpha2/2)},
+
+        # memory bound
+        {'type': 'ineq', 'fun': bcj(lambda x: membound - bcj_memory(x))}
     ]
 
     def bcj_classical_time_new(x):
         """
-        Time with 7-Diss and repition of subtrees
+        Time with 7-dissection and repetition of sub-trees
         """
         x = set_bcj(*x)
         m = max(x.L3, x.L2, x.L1)
@@ -437,7 +470,7 @@ def optimize_bcj(new=True, only_diss=False, verb=True, membound=1.,
 
     def bcj_classical_time_dissection(x):
         """
-        Time with 7-Diss but without repition of subtrees
+        Time with 7-dissection but without repletion of sub-trees
         """
         x = set_bcj(*x)
         m = max(x.l3, x.l2, x.l1)
@@ -452,16 +485,14 @@ def optimize_bcj(new=True, only_diss=False, verb=True, membound=1.,
 
     def bcj_classical_time_org(x):
         """
-        Time and Memory without 7-Diss and without repition of subtrees
+        Time and Memory without 7-dissection and without relation of sub-trees
         """
-        x = set_bcj(*x)
-        return max(max(x.L1*2, x.L2 - x.l1)
-                   , max(x.L2, x.L3 - x.l2)
-                   , max(x.L3, x.L4 - x.l3))
-
+        x = set_org_bcj(*x)
+        return max(x.l4, x.l3, x.l2 - x.p2, x.l1 - x.p1, -x.p0)
+    
     def bcj_memory_new(x):
         """
-        Memory with 7-Diss
+        Memory with 7-dissection
         """
         x = set_bcj(*x)
         space = D1(x)
@@ -474,35 +505,42 @@ def optimize_bcj(new=True, only_diss=False, verb=True, membound=1.,
         """
         Memory MITM
         """
-        x = set_bcj(*x)
-        return max(x.L4, x.L3, x.L2, x.L1)
+        x = set_org_bcj(*x)
+        return max(x.l4, x.l3, x.l2, x.l1)
 
     time = bcj_classical_time_org
+    bcj_memory = bcj_memory_org
+    mycons = org_bcj_constraints
+    start = [(-0.2)]*3 + [(0.2)]*10
+    bounds = [(-1,0)]*3 + [(0,1)]*10
+
     if new:
         time = bcj_classical_time_new
+        bcj_memory = bcj_memory_new
+        mycons = bjc_constraints
+
+        # NOTE: we choose the starting points random in a interval, which we found
+        # out to be the fastest. For different algorithms this may needs to be 
+        # changed
+        start = [random.uniform(0, 0.15) for _ in range(7)] +\
+                [random.uniform(0, 0.05) for _ in range(3)] +\
+                [random.uniform(0, 1) for _ in range(3)]
+
+        bounds = [(0, 0.8)]*7 + [(0, 0.05)] * 3 + [(0, 1)]*3
+
     if only_diss:
         time = bcj_classical_time_dissection
 
-    bcj_memory = bcj_memory_org
-    if new:
-        bcj_memory = bcj_memory_new
 
-    # objective = time
-    mycons = bjc_constraints
-
-    start = [random.uniform(0, 0.15) for _ in range(7)] +\
-            [random.uniform(0, 0.05) for _ in range(3)] +\
-            [random.uniform(0, 1) for _ in range(3)]
-
-    bounds = [(0, 0.8)]*7 + [(0, 0.05)] * 3 + [(0, 1)]*3
 
     result = opt.minimize(time, start, bounds=bounds, tol=1e-10,
                           constraints=mycons, options={'maxiter': iters})
-
-    astuple = set_bcj(*result.x)
+    if new:
+        astuple = set_bcj(*result.x)
+    else:
+        astuple = set_org_bcj(*result.x)
 
     if verb:
-        print(t1(astuple), t2(astuple), t3(astuple))
         print("memory ", bcj_memory(result.x))
         print("Validity: ", result.success)
         print("Time: ", round_upwards_to_str(time(astuple)))
@@ -526,14 +564,14 @@ def optimize_bcj(new=True, only_diss=False, verb=True, membound=1.,
        and all(-10**(-7) <= i[1] for i in t if i[0] == "ineq"):
         return time(astuple)
     else:
-        return -1
+        return inf
 
 
 ###############################################################################
 #################################BBSS##########################################
 ###############################################################################
 
-def optimize_bbss(new=True, only_diss=False, membound=1, active_two=True,
+def optimize_bbss(new=True, only_diss=False, membound=1., active_two=True,
                   verb=True, iters=10000):
     """
     Optimization target: new algorithm for subset-sum, using {0,-1,1,2}
@@ -595,6 +633,7 @@ def optimize_bbss(new=True, only_diss=False, membound=1, active_two=True,
         {'type': 'ineq', 'fun': bbss(lambda x: membound-bbss_memory(x))},
     ]
 
+    # append the constraints to enumerate twos if needed
     if active_two:
         constraints_bbss.append({'type': 'ineq', 'fun': bbss(lambda x: - x.gamma1)})
         constraints_bbss.append({'type': 'ineq', 'fun': bbss(lambda x: - x.gamma2)})
@@ -602,7 +641,7 @@ def optimize_bbss(new=True, only_diss=False, membound=1, active_two=True,
 
     def bbss_time_new(x):
         """
-        Time with 7-Diss and repition of subtrees
+        Time with 7-dissection and repetition of sub-trees
         """
         x = set_bbss(*x)
         m = max(x.l3, x.l2, x.l1)
@@ -619,7 +658,7 @@ def optimize_bbss(new=True, only_diss=False, membound=1, active_two=True,
 
     def bbss_time_dissection(x):
         """
-        Time with 7-Diss but without repition of subtrees
+        Time with 7-dissection but without repetition of sub-trees
         """
         x = set_bbss(*x)
         m = max(x.l3, x.l2, x.l1)
@@ -628,8 +667,6 @@ def optimize_bbss(new=True, only_diss=False, membound=1, active_two=True,
         memfac = max(1/7, min(memfac, 1/4))
         timefac = time7diss(memfac)
         # return max(x.l4, x.l3, x.l2 - x.p2, x.l1 - x.p1, -x.p0)
-        # it3=x.c1-x.c2 # l3
-        # it2=x.c2-x.c3 # l2
         return max(max(space*timefac, x.l3) - min(2*x.l1 - (1-x.c1) + x.p0, 0)
                    , max(x.l3, x.l2 - x.p2) - min(2*x.l1 - (1-x.c1) + x.p0, 0)
                    , max(x.l2, x.l1 - x.p1, 2*x.l1 - (1-x.c1))
@@ -637,11 +674,9 @@ def optimize_bbss(new=True, only_diss=False, membound=1, active_two=True,
 
     def bbss_time_org(x):
         """
-        Time and Memory without 7-Diss and without repition of subtrees
+        Time without 7-dissection and without repetition of sub-trees
         """
         x = set_bbss(*x)
-        # it3=x.c1-x.c2 # l3
-        # it2=x.c2-x.c3 # l2
         return max(max(x.l4, x.l3) - min(2*x.l1 - (1-x.c1) + x.p0, 0)
                    , max(x.l3, x.l2 - x.p2) - min(2*x.l1 - (1-x.c1) + x.p0, 0)
                    , max(x.l2, x.l1 - x.p1, 2*x.l1 - (1-x.c1))
@@ -649,7 +684,7 @@ def optimize_bbss(new=True, only_diss=False, membound=1, active_two=True,
 
     def bbss_memory_new(x):
         """
-        Memory with 7-Diss
+        Memory with 7-dissection
         """
         x = set_bbss(*x)
         space = f(1/16.+x.alpha3-2*x.gamma3, x.alpha3, x.gamma3)
@@ -676,6 +711,7 @@ def optimize_bbss(new=True, only_diss=False, membound=1, active_two=True,
         bbss_memory = bbss_memory_new
     mycons = constraints_bbss
 
+    # choose the starting point radnom
     start = [(-0.2)]*3 +\
             [random.uniform(0.18, 0.22) for _ in range(7)] +\
             [0.03]*3 +\
@@ -712,28 +748,36 @@ def optimize_bbss(new=True, only_diss=False, membound=1, active_two=True,
        all(-10**(-7) <= i[1] for i in t if i[0] == "ineq"):
         return time(astuple)
     else:
-        return -1
+        return inf
 
 
-def BCJ_BBSS_memlimit(bbss=False, new=False):
+def BCJ_BBSS_memlimit(bbss=False, new=False, step_size=0.02, min_bound=0.05, 
+                      max_bound=0.29, number_of_retries=10):
     """
-    calc runtime for every memory limitation
-    :param bbss: if set to `true` bbss will get optimized, else bcj
-    :param new: if set to `true` the new versions get optimized, else the
+    calculate the runtime for every memory limitation
+    :param bbss: if set to `true` BBSS will get optimized, else BCJ
+    :param new: if set to `true` the new TMTO versions get optimized, else the
                 original.
+    :param step_size: optimization step size:
+    :param min_bound: min memory bound 
+    :param max_bound: max memory bound
+    :param number_of_retries: number of retries for each memory limit. 
+            NOTE: this changes drastically the runtime
+    :return a list of the form:
+        [[membound, best runtime]]
     """
     L = []
     algo = optimize_bcj
     if bbss:
         algo = optimize_bbss
-    membound = 0.29
-    while membound > 0.05:
+    membound = max_bound
+    while membound >= min_bound:
         mini = 2
         c = 0
-        while c < 5:
+        while c < number_of_retries:
             try:
-                t = float(algo(new=new, verb=False))
-                print(t)
+                t = float(algo(new=new, verb=False, membound=membound))
+                print(t, membound)
             except ValueError:
                 print("error")
                 continue
@@ -744,7 +788,7 @@ def BCJ_BBSS_memlimit(bbss=False, new=False):
                 c += 1
 
         L.append([membound, mini])
-        membound -= 0.02
+        membound -= step_size
 
     return L
 
@@ -752,6 +796,8 @@ def BCJ_BBSS_memlimit(bbss=False, new=False):
 ###############################################################################
 #################################BJMM##########################################
 ###############################################################################
+# this is really stupid
+bjmm_membound = 1.
 
 def optimize_bjmm(k=0.488, w=Hi(1-0.488)/2, verb=False, membound=1.,
                   iters=10000):
@@ -764,6 +810,8 @@ def optimize_bjmm(k=0.488, w=Hi(1-0.488)/2, verb=False, membound=1.,
     :param membound: optimize under memory constraint: in [0, 1]
     :param iters: number of iterations scipy is using.
     """
+    global bjmm_membound
+    bjmm_membound = membound
     set_bjmm = collections.namedtuple('BJMM', 'l p p1 p2 L0 L1 L2 r1 r2')
 
     def bjmm(f):
@@ -815,11 +863,10 @@ def optimize_bjmm(k=0.488, w=Hi(1-0.488)/2, verb=False, membound=1.,
 
         # memory
         {'type': 'ineq', 'fun': bjmm(
-            lambda x: membound-classical_mem_bjmm(x))},
+            lambda x: bjmm_membound-classical_mem_bjmm(x))},
     ]
 
     time = classical_time_bjmm
-    objective = time
     mycons = constraints_bjmm
 
     start = [(rng.uniform(0.05, 0.09))]+[(rng.uniform(0.01, 0.02))] + \
@@ -850,31 +897,43 @@ def optimize_bjmm(k=0.488, w=Hi(1-0.488)/2, verb=False, membound=1.,
 
             print("Validity: ", result.success & valid)
             print("Time: ", round_upwards_to_str(time(astuple)))
+    
+    if not result.success:
+        return inf
 
-    return result.success, objective(astuple), result
+    return time(astuple)
 
 
-def optimize_mem_bjmm(retries=1000):
+def optimize_mem_bjmm(retries=10, min_bound=0.0, max_bound=0.1, step=0.002):
     """
     finds the optimal runtime under a certain memory restriction
     :param retries: number of repetitions to find the minimum. Note that this
                     values does NOT effect the number of repetitions of scipy.
+    :param min_bound: min memory bound in float
+    :param max_bound: max memory bound in float
+    :param max_bound: max memory bound in float
+    :returns: a list of the form:
+        [[time, memlimit]]
     """
     bjmm_data = []
-    for mem in float_range(0., 0.2, 0.1):
-        global bjmm_membound
-        bjmm_membound = mem
-        time = min([optimize_bjmm(verb=False, membound=bjmm_membound) for _ in range(retries)])
+    for mem in float_range(min_bound, max_bound, step):
+        time = []
+        for _ in range(retries):
+            time.append(optimize_bjmm(verb=False, membound=mem))
+
+        time = min(time)
+        print(time, mem)
         bjmm_data.append([mem, time])
-    print(bjmm_data)
     return bjmm_data
 
 
-def optimize_k_bjmm(retries=1000, half_distance=True):
+def optimize_k_bjmm(retries=10, half_distance=True):
     """
     optimize under restrictions on the code rate
     :param retries: number of repetitions to find the minimum. Note that this
                     values does NOT effect the number of repetitions of scipy.
+    :returns a list of the form:
+        [[k, w, time], ...]
     """
     bjmm_data = []
     for k_ in float_range(0., 0.5, 0.1):
@@ -884,8 +943,8 @@ def optimize_k_bjmm(retries=1000, half_distance=True):
             w = w/2
 
         time = min([optimize_bjmm(k=k, w=w, verb=False) for _ in range(retries)])
+        print(k, w, time)
         bjmm_data.append([k, w, time])
-    print(bjmm_data)
     return bjmm_data
 
 
@@ -932,16 +991,10 @@ def optimize_new_bjmm(k=0.488, w=Hi(1-0.488)/2, verb=False,
             max(3*x.l1 - 2*x.r1 - x.r2, 0) + T1,
             max(3*x.l1 + x.l2 - 2*x.r1 - x.r2, 0) + max(T2, T3)
         ) + perms
-        # return perms + max(x.L1,
-        #                   2*x.L1-x.r1, x.L2,
-        #                   2*x.L2-(x.r2-x.r1),
-        #                   x.L3,
-        #                   2*x.L3 - (x.l - x.r2))
-        #                   #x.L4)
 
     def classical_mem_new_bjmm(x):
         x = set_new_bjmm(*x)
-        return max(x.L1/2, x.L2, x.L3)  # , x.L4)
+        return max(x.L1/2, x.L2, x.L3)
 
     constraints_new_bjmm = [
         # weights
@@ -954,7 +1007,7 @@ def optimize_new_bjmm(k=0.488, w=Hi(1-0.488)/2, verb=False,
         {'type': 'eq',   'fun': new_bjmm(
             lambda x: x.r2 - new_bjmm_reps(x.p2, x.p, k + x.l))},
 
-        # binomial coeeficient correctness
+        # binomial coefficient correctness
         {'type': 'ineq',   'fun': new_bjmm(lambda x: x.l - (x.l1 + x.l2))},
         {'type': 'ineq',   'fun': new_bjmm(lambda x: x.l1 - x.r1)},
         {'type': 'ineq',   'fun': new_bjmm(lambda x: x.l2 - x.r2)},
@@ -1013,42 +1066,54 @@ def optimize_new_bjmm(k=0.488, w=Hi(1-0.488)/2, verb=False,
 
             print("Validity: ", result.success & valid)
             print("Time: ", round_upwards_to_str(time(astuple)))
+    
+    if not result.success:
+        return inf
 
-    return result.success, objective(astuple), result
+    return time(astuple)
 
 
-def optimize_mem_new_bjmm(retries=1000):
+def optimize_mem_new_bjmm(retries=10, min_bound=0.0, max_bound=0.1, step=0.001):
     """
     finds the optimal runtime under a certain memory restriction
     :param retries: number of repetitions to find the minimum. Note that this
                     values does NOT effect the number of repetitions of scipy.
+    :param min_bound: min memory bound in float
+    :param max_bound: max memory bound in float
+    :param max_bound: max memory bound in float
+    :returns: a list of the form:
+        [[time, memlimit]]
     """
     bjmm_data = []
-    for mem in float_range(0., 0.2,  0.02):
-        global new_bjmm_membound
-        new_bjmm_membound = mem
-        time = min([optimize_new_bjmm(membound=new_bjmm_membound, verb=False) for _ in range(retries)])
+    for mem in float_range(min_bound, max_bound, step):
+        try:
+            time = min([optimize_new_bjmm(verb=False, membound=mem) for _ in range(retries)])
+        except:
+            print("new bjmm error")
+            continue
+        print(time, mem)
         bjmm_data.append([mem, time])
-    print(bjmm_data)
     return bjmm_data
 
 
-def optimize_k_new_bjmm(retries=1000, half_distance=True):
+def optimize_k_new_bjmm(retries=2, half_distance=True):
     """
     optimize under restrictions on the code rate
     :param retries: number of repetitions to find the minimum. Note that this
                     values does NOT effect the number of repetitions of scipy.
+    :returns a list of the form:
+        [[k, w, time], ...]
     """
     bjmm_data = []
-    for k_ in float_range(0., 0.5, 0.1):
+    for k_ in float_range(0.1, 0.5, 0.1):
         k = k_
         w = Hi(1 - k_)
         if half_distance:
             w = w/2
 
         time = min([optimize_new_bjmm(k=k, w=w, verb=False) for _ in range(retries)])
+        print(k, w, time)
         bjmm_data.append([k, w, time])
-    print(bjmm_data)
     return bjmm_data
 
 
@@ -1141,28 +1206,42 @@ def optimize_mmt(k=0.488, w=Hi(1-0.488)/2, verb=False, membound=1.,
             print("Validity: ", result.success & valid)
             print("Time: ", round_upwards_to_str(classical_time_mmt(astuple)))
 
+    if not result.success:
+        return inf
+
     return classical_time_mmt(astuple)
 
 
-def optimize_mem_mmt(retries=1000):
+def optimize_mem_mmt(retries=2, min_bound=0.0, max_bound=0.2, step=0.01):
     """
     finds the optimal runtime under a certain memory restriction
     :param retries: number of repetitions to find the minimum. Note that this
                     values does NOT effect the number of repetitions of scipy.
+    :param min_bound: min memory bound in float
+    :param max_bound: max memory bound in float
+    :param max_bound: max memory bound in float
+    :returns: a list of the form:
+        [[memlimit, time]]
     """
-    mmt_data = []
-    for mem in float_range(0., 0.2, 0.02):
-        time = min([optimize_mmt(membound=mem, verb=False) for _ in range(retries)])
-        mmt_data.append([mem, time])
-    print(mmt_data)
-    return mmt_data
+    bjmm_data = []
+    for mem in float_range(min_bound, max_bound, step):
+        try:
+            time = min([optimize_mmt(verb=False, membound=mem) for _ in range(retries)])
+        except:
+            print("mmt error")
+            continue
+        print(time, mem)
+        bjmm_data.append([mem, time])
+    return bjmm_data
 
 
-def optimize_k_mmt(retries=1000, half_distance=True):
+def optimize_k_mmt(retries=2, half_distance=True):
     """
     optimize under restrictions on the code rate
     :param retries: number of repetitions to find the minimum. Note that this
                     values does NOT effect the number of repetitions of scipy.
+    :returns a list of the form:
+        [[k, w, time], ...]
     """
     mmt_data = []
     for k_ in float_range(0., 0.5, 0.1):
@@ -1172,15 +1251,15 @@ def optimize_k_mmt(retries=1000, half_distance=True):
             w = w/2
 
         time = min([optimize_mmt(k=k, w=w, verb=False) for _ in range(retries)])
+        print(k, w, time)
         mmt_data.append([k, w, time])
-    print(mmt_data)
     return mmt_data
 
 
 def optimize_new_mmt(k=0.488, w=Hi(1-0.488)/2, verb=False,
                      membound=1.0, iters=10000):
     """
-    optimize the new version of May Meurers Thomae algorithm:
+    optimize the new version of May Meurer Thomae algorithm:
         https://www.iacr.org/archive/asiacrypt2011/70730106/70730106.pdf
     :param k: code rate
     :param w: error weight
@@ -1266,22 +1345,33 @@ def optimize_new_mmt(k=0.488, w=Hi(1-0.488)/2, verb=False,
 
             print("Validity: ", result.success & valid)
             print("Time: ", round_upwards_to_str(classical_time_new_mmt(astuple)))
+
+    if not result.success:
+        return inf
     return classical_time_new_mmt(astuple)
 
 
-def optimize_mem_new_mmt(retries=100):
+def optimize_mem_new_mmt(retries=2, min_bound=0.0, max_bound=0.2, step=0.01):
     """
     finds the optimal runtime under a certain memory restriction
     :param retries: number of repetitions to find the minimum. Note that this
                     values does NOT effect the number of repetitions of scipy.
+    :param min_bound: min memory bound in float
+    :param max_bound: max memory bound in float
+    :param max_bound: max memory bound in float
+    :returns: a list of the form:
+        [[time, memlimit]]
     """
-    mmt_data = []
-    retries = 3
-    for mem in float_range(0., 0.2, 0.02):
-        time = min([optimize_new_mmt(membound=mem, verb=False) for _ in range(retries)])
-        mmt_data.append([mem, time])
-    print(mmt_data)
-    return mmt_data
+    bjmm_data = []
+    for mem in float_range(min_bound, max_bound, step):
+        try:
+            time = min([optimize_new_mmt(verb=False, membound=mem) for _ in range(retries)])
+        except:
+            print("new_mmt error")
+            continue
+        print(time, mem)
+        bjmm_data.append([mem, time])
+    return bjmm_data
 
 
 def optimize_k_new_mmt(retries=1000, half_distance=True):
@@ -1289,6 +1379,8 @@ def optimize_k_new_mmt(retries=1000, half_distance=True):
     optimize under restrictions on the code rate
     :param retries: number of repetitions to find the minimum. Note that this
                     values does NOT effect the number of repetitions of scipy.
+    :returns a list of the form:
+        [[k, w, time], ...]
     """
     mmt_data = []
     retries = 3
@@ -1299,8 +1391,8 @@ def optimize_k_new_mmt(retries=1000, half_distance=True):
             w = w/2
 
         time = min([optimize_new_mmt(k=k, w=w, verb=False) for _ in range(retries)])
+        print(k, w, time)
         mmt_data.append([k, w, time])
-    print(mmt_data)
     return mmt_data
 
 
@@ -1739,7 +1831,7 @@ if __name__ == "__main__":
     parser.add_argument('-k', type=float, default=0.488,
                         help='code dimension, only for bjmm/mmt')
     parser.add_argument('-w', type=float, default=Hi(1-0.488)/2,
-                        help='optimize the new MMT algorithm')
+                        help='error weight')
 
     parser.add_argument('--verbose', action='store_true',
                         help='verbose output')
@@ -1748,32 +1840,35 @@ if __name__ == "__main__":
     parser.add_argument('--memlimit', action='store_true',
                         help='optimize under memory limitation')
     parser.add_argument('--rate', action='store_true',
-                        help='optimize under memory limitation')
+                        help='optimize for different code rates')
 
     args = parser.parse_args()
 
     if args.rate:
-        if args.mmt:
-            optimize_k_mmt()
-        if args.new_mmt:
-            optimize_k_new_mmt()
-        if args.bjmm:
-            optimize_k_bjmm()
-        if args.new_bjmm:
-            optimize_k_new_bjmm()
-
-    if args.memlimit:
-        # global NOLOG
         NOLOG = True
 
         if args.mmt:
-            optimize_mem_mmt()
+            print(optimize_k_mmt())
         if args.new_mmt:
-            optimize_mem_new_mmt()
+            print(optimize_k_new_mmt())
         if args.bjmm:
-            optimize_mem_bjmm()
+            print(optimize_k_bjmm())
         if args.new_bjmm:
-            optimize_mem_new_bjmm()
+            print(optimize_k_new_bjmm())
+
+        exit(0)
+
+    if args.memlimit:
+        NOLOG = True
+
+        if args.mmt:
+            print(optimize_mem_mmt())
+        if args.new_mmt:
+            print(optimize_mem_new_mmt())
+        if args.bjmm:
+            print(optimize_mem_bjmm())
+        if args.new_bjmm:
+            print(optimize_mem_new_bjmm())
 
         bbss = False
         if args.bbss or args.new_bbss:
@@ -1782,24 +1877,24 @@ if __name__ == "__main__":
         new = False
         if args.new_bbss or args.new_bcj:
             new = True
-
-        BCJ_BBSS_memlimit(bbss, new)
+        
+        print(BCJ_BBSS_memlimit(bbss, new))
         exit(0)
 
     memlimit = 1.
     if args.bcj:
-        optimize_bcj(False, verb=args.verbose, iters=args.retries, membound=memlimit)
+        print(optimize_bcj(False, verb=args.verbose, iters=args.retries, membound=memlimit))
     if args.new_bcj:
-        optimize_bcj(True, verb=args.verbose, iters=args.retries, membound=memlimit)
+        print(optimize_bcj(True, verb=args.verbose, iters=args.retries, membound=memlimit))
     if args.bbss:
-        optimize_bbss(False, verb=args.verbose, iters=args.retries, membound=memlimit)
+        print(optimize_bbss(False, verb=args.verbose, iters=args.retries, membound=memlimit))
     if args.new_bbss:
-        optimize_bbss(True, verb=args.verbose, iters=args.retries, membound=memlimit)
+        print(optimize_bbss(True, verb=args.verbose, iters=args.retries, membound=memlimit))
     if args.bjmm:
-        optimize_bjmm(k=args.k, w=args.w, verb=args.verbose, iters=args.retries, membound=memlimit)
+        print(optimize_bjmm(k=args.k, w=args.w, verb=args.verbose, iters=args.retries, membound=memlimit))
     if args.new_bjmm:
-        optimize_new_bjmm(k=args.k, w=args.w, verb=args.verbose, iters=args.retries, membound=memlimit)
+        print(optimize_new_bjmm(k=args.k, w=args.w, verb=args.verbose, iters=args.retries, membound=memlimit))
     if args.mmt:
-        optimize_mmt(k=args.k, w=args.w, verb=args.verbose, iters=args.retries, membound=memlimit)
+        print(optimize_mmt(k=args.k, w=args.w, verb=args.verbose, iters=args.retries, membound=memlimit))
     if args.new_mmt:
-        optimize_new_mmt(k=args.k, w=args.w, verb=args.verbose, iters=args.retries, membound=memlimit)
+        print(optimize_new_mmt(k=args.k, w=args.w, verb=args.verbose, iters=args.retries, membound=memlimit))
